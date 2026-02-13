@@ -98,6 +98,28 @@ async def load(request: LoadRequest):
         raise HTTPException(status_code=404, detail=f"File not found: {request.filepath}")
     except PermissionError:
         raise HTTPException(status_code=403, detail=f"Permission denied: {request.filepath}")
+    
+# Add models and endpoint
+class SampleRequest(BaseModel):
+    n: int = Field(..., gt=0)
+
+class SampleResponse(BaseModel):
+    lines: List[str]
+    count: int
+    remaining_in_cache: int
+
+@app.post("/sample", response_model=SampleResponse)
+async def sample(request: SampleRequest):
+    lines = cache.sample(request.n)
+    stats = cache.get_stats()
+    return SampleResponse(
+        lines=lines,
+        count=len(lines),
+        remaining_in_cache=stats["current_lines"]
+    )
+@app.get("/stats")
+async def get_stats():
+    return cache.get_stats()
 
 
 @app.get("/health")
