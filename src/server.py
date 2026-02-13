@@ -61,6 +61,13 @@ class LineCache:
             self._total_sampled += n
             logger.info(f"Sampled {n} lines. Remaining: {len(self.lines)}")
             return sampled
+        
+    def clear(self):
+        with self.lock:
+            count = len(self.lines)
+            self.lines.clear()
+            logger.info(f"Cleared {count} lines from cache")
+            return count
     
 
 cache = LineCache()
@@ -99,7 +106,6 @@ async def load(request: LoadRequest):
     except PermissionError:
         raise HTTPException(status_code=403, detail=f"Permission denied: {request.filepath}")
     
-# Add models and endpoint
 class SampleRequest(BaseModel):
     n: int = Field(..., gt=0)
 
@@ -121,6 +127,10 @@ async def sample(request: SampleRequest):
 async def get_stats():
     return cache.get_stats()
 
+@app.post("/clear")
+async def clear_cache():
+    count = cache.clear()
+    return {"cleared": count}
 
 @app.get("/health")
 async def health_check():
