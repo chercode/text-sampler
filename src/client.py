@@ -45,6 +45,11 @@ class LineSamplerClient:
 
     def clear(self) -> Dict[str, Any]:
         return self._request("POST", "/clear", json_body=None, timeout=10)
+    
+    def reset(self) -> Dict[str, Any]:
+        r = requests.post(f"{self.base_url}/reset", timeout=10)
+        r.raise_for_status()
+        return r.json()
 
 
 def _print(obj: Any) -> None:
@@ -65,6 +70,7 @@ def main() -> None:
 
     sub.add_parser("stats", help="Show current cache size")
     sub.add_parser("clear", help="Clear the cache")
+    sub.add_parser("reset", help="Clear cache and reset lifetime counters")
 
     args = parser.parse_args()
     client = LineSamplerClient(base_url=args.base_url)
@@ -77,6 +83,8 @@ def main() -> None:
         _print(client.stats())
     elif args.cmd == "clear":
         _print(client.clear())
+    elif args.cmd == "reset":
+        _print(client.reset())
 
 
 if __name__ == "__main__":
