@@ -1,3 +1,5 @@
+from typing import List, Tuple
+import random
 import logging
 import threading
 from typing import List
@@ -60,25 +62,24 @@ class LineCache:
         logger.info(f"Loaded {appended} lines. Cache: {len(self.lines)}")
         return appended
 
-
     def sample(self, n: int) -> List[str]:
+
+        if n < 0:
+            raise ValueError("n must be >= 0")
+
         with self.lock:
-            if n > len(self.lines):
-                n = len(self.lines)
-        
-            if n == 0:
-                return []
-        
-            indices = random.sample(range(len(self.lines)), n)
-            indices.sort(reverse=True)
-        
-            sampled = []
-            for idx in indices:
-                sampled.append(self.lines.pop(idx))
-        
-            self._total_sampled += n
-            logger.info(f"Sampled {n} lines. Remaining: {len(self.lines)}")
-            return sampled
+            k = min(n, len(self.lines))
+            out: List[str] = []
+
+            for _ in range(k):
+                i = random.randrange(len(self.lines))
+                # swap-pop for O(1) removal
+                self.lines[i], self.lines[-1] = self.lines[-1], self.lines[i]
+                out.append(self.lines.pop())
+
+            logger.info(f"Sampled {k} lines. Remaining cache size: {len(self.lines)}")
+            return out
+
         
     def clear(self):
         with self.lock:
