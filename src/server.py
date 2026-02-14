@@ -24,23 +24,41 @@ class LineCache:
                 "total_loaded": self._total_loaded,
                 "total_sampled": self._total_sampled,
             }
-    def load(self, filepath: str) -> int:
+        
+    def load(self, filepath: str, *, chunk_size: int = 50_000) -> int:
+
+        appended = 0
+        batch: list[str] = []
+
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                new_lines = f.read().splitlines()
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                for raw in f:
+                # Remove only newline characters; keep whitespace and blank lines intact.
+                    line = raw.rstrip("\n").rstrip("\r")
+                    batch.append(line)
+
+                    if len(batch) >= chunk_size:
+                        with self.lock:
+                            self.lines.extend(batch)
+                            self._total_loaded += len(batch)
+                        appended += len(batch)
+                        batch.clear()
+
+                if batch:
+                    with self.lock:
+                        self.lines.extend(batch)
+                        self._total_loaded += len(batch)
+                    appended += len(batch)
+
         except FileNotFoundError:
             logger.error(f"File not found: {filepath}")
             raise
         except PermissionError:
             logger.error(f"Permission denied: {filepath}")
             raise
-    
-        new_lines = [line for line in new_lines if line.strip()]
-        with self.lock:
-            self.lines.extend(new_lines)
-            self._total_loaded += len(new_lines)
-            logger.info(f"Loaded {len(new_lines)} lines. Cache: {len(self.lines)}")
-            return len(new_lines)
+
+        logger.info(f"Loaded {appended} lines. Cache: {len(self.lines)}")
+        return appended
 
 
     def sample(self, n: int) -> List[str]:
