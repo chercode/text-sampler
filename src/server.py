@@ -137,7 +137,7 @@ async def load(request: LoadRequest):
         raise HTTPException(status_code=403, detail=f"Permission denied: {request.filepath}")
     
 class SampleRequest(BaseModel):
-    n: int = Field(..., gt=0)
+    n: int = Field(..., ge=0)
 
 class SampleResponse(BaseModel):
     lines: List[str]
