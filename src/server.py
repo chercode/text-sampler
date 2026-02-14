@@ -68,6 +68,12 @@ class LineCache:
             self.lines.clear()
             logger.info(f"Cleared {count} lines from cache")
             return count
+        
+    def reset(self):
+        with self.lock:
+            self.lines.clear()
+            self._total_loaded = 0
+            self._total_sampled = 0
     
 
 cache = LineCache()
