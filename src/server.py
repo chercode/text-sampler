@@ -62,6 +62,7 @@ class LineCache:
         logger.info(f"Loaded {appended} lines. Cache: {len(self.lines)}")
         return appended
 
+    
     def sample(self, n: int) -> List[str]:
 
         if n < 0:
@@ -76,10 +77,10 @@ class LineCache:
                 # swap-pop for O(1) removal
                 self.lines[i], self.lines[-1] = self.lines[-1], self.lines[i]
                 out.append(self.lines.pop())
+            self._total_sampled += k
 
             logger.info(f"Sampled {k} lines. Remaining cache size: {len(self.lines)}")
             return out
-
         
     def clear(self):
         with self.lock:
