@@ -4,7 +4,7 @@ from typing import List
 from fastapi import FastAPI
 import uvicorn
 import random
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from fastapi import HTTPException
 
 logging.basicConfig(level=logging.INFO)
@@ -81,9 +81,10 @@ app = FastAPI(
 
 class LoadRequest(BaseModel):
     filepath: str = Field(..., description="Absolute path to the text file")
-    
-    @validator('filepath')
-    def validate_filepath(cls, v):
+
+    @field_validator("filepath")
+    @classmethod
+    def validate_filepath(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("filepath cannot be empty")
         return v
