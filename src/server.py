@@ -1,8 +1,6 @@
 from typing import List, Tuple
-import random
 import logging
 import threading
-from typing import List
 from fastapi import FastAPI
 import uvicorn
 import random
