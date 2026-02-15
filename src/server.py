@@ -123,7 +123,7 @@ class LoadResponse(BaseModel):
     total_lines_in_cache: int
 
 @app.post("/load", response_model=LoadResponse)
-async def load(request: LoadRequest):
+def load(request: LoadRequest):
     try:
         lines_read = cache.load(request.filepath)
         stats = cache.get_stats()
@@ -145,7 +145,7 @@ class SampleResponse(BaseModel):
     remaining_in_cache: int
 
 @app.post("/sample", response_model=SampleResponse)
-async def sample(request: SampleRequest):
+def sample(request: SampleRequest):
     lines = cache.sample(request.n)
     stats = cache.get_stats()
     return SampleResponse(
@@ -154,16 +154,16 @@ async def sample(request: SampleRequest):
         remaining_in_cache=stats["current_lines"]
     )
 @app.get("/stats")
-async def get_stats():
+def get_stats():
     return cache.get_stats()
 
 @app.post("/clear")
-async def clear_cache():
+def clear_cache():
     count = cache.clear()
     return {"cleared": count}
 
 @app.get("/health")
-async def health_check():
+def health_check():
     return {"status": "healthy"}
 
 @app.post("/reset")
