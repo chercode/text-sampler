@@ -238,23 +238,59 @@ curl -s -X POST http://127.0.0.1:8000/sample \
 ---
 
 ### Option B — Docker (optional)
-Build:
+
+#### Dockerfile (simple run)
+
+Build the image:
+
 ```bash
 docker build -t text-sampler .
 ```
 
-Run:
+Run the server:
+
 ```bash
 docker run --rm -p 8000:8000 text-sampler
 ```
 
-> Note: `/load` uses a file path that must exist where the **server** runs. If the server runs in Docker, mount a folder:
+Important: `POST /load` expects a **file path that exists where the server runs**.  
+If the server runs in Docker, mount a host folder into the container and use the container path:
+
 ```bash
-docker run --rm -p 8000:8000 -v "$PWD/data:/data" text-sampler
+# Put your text file(s) under ./data on the host
+docker run --rm -p 8000:8000 -v "$PWD/data:/data:ro" text-sampler
 ```
-Then load:
+
+Then load using the container path (server reads from inside the container):
+
 ```bash
 python -m src.client load /data/file.txt
+```
+
+---
+
+#### Docker Compose
+
+Your `docker-compose.yml` runs Uvicorn with `--reload` and bind-mounts:
+- `./src` → `/app/src` (so edits hot-reload)
+- `./data` → `/data:ro` (so files can be loaded via `/data/...` paths)
+
+Start:
+
+```bash
+docker compose up --build
+```
+
+Now load files that are located in `./data` on your host by referencing them as `/data/...` paths:
+
+```bash
+python -m src.client load /data/file.txt
+```
+
+Stop:
+
+```bash
+docker compose down
 ```
 
 ---

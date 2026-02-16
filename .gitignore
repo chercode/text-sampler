@@ -7,6 +7,4 @@ __pycache__/
 dist/
 build/
 .vscode
-data/
-sample.txt/
 *.egg-info/
