@@ -8,6 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.server import app
+import socket
+import subprocess
+import sys
+import time
+
+import requests
+
 
 
 @pytest.fixture
@@ -287,3 +294,164 @@ def test_mixed_concurrent_load_and_sample_has_no_duplicates_and_only_returns_loa
                 os.unlink(p)
             except OSError:
                 pass
+
+
+def test_sample_from_empty_cache_returns_empty_list_and_zero_count(client: TestClient):
+    stats_before = client.get("/stats").json()
+    assert stats_before["current_lines"] == 0
+
+    r = client.post("/sample", json={"n": 10})
+    assert r.status_code == 200
+
+    body = r.json()
+    assert body["count"] == 0
+    assert body["lines"] == []
+    assert body["remaining_in_cache"] == 0
+
+    stats_after = client.get("/stats").json()
+    assert stats_after["current_lines"] == 0
+    assert stats_after["total_sampled"] == 0
+
+
+def test_multiple_load_calls_append_not_overwrite(client: TestClient):
+    paths = []
+    try:
+        f1 = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
+        for i in range(100):
+            f1.write(f"A-{i}\n")
+        f1.close()
+        paths.append(f1.name)
+
+        f2 = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
+        for i in range(200):
+            f2.write(f"B-{i}\n")
+        f2.close()
+        paths.append(f2.name)
+
+        r1 = client.post("/load", json={"filepath": paths[0]})
+        assert r1.status_code == 200
+        assert r1.json()["lines_read"] == 100
+
+        r2 = client.post("/load", json={"filepath": paths[1]})
+        assert r2.status_code == 200
+        assert r2.json()["lines_read"] == 200
+
+        stats = client.get("/stats").json()
+        assert stats["current_lines"] == 300
+        assert stats["total_loaded"] == 300
+
+        # Optional: sanity check you can sample everything and it’s all unique
+        r = client.post("/sample", json={"n": 1000})
+        assert r.status_code == 200
+        lines = r.json()["lines"]
+        assert len(lines) == 300
+        assert len(lines) == len(set(lines))
+    finally:
+        for p in paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+def test_sample_rejects_n_over_max_sample_size_returns_400(client: TestClient, unique_lines_file: str):
+
+    client.post("/load", json={"filepath": unique_lines_file})
+
+    r = client.post("/sample", json={"n": 1_000_001})
+    assert r.status_code == 400
+    assert "Limit is" in r.json().get("detail", "")
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _wait_until_up(base_url: str, timeout_s: float = 8.0) -> None:
+    start = time.time()
+    while time.time() - start < timeout_s:
+        try:
+            r = requests.get(f"{base_url}/health", timeout=0.5)
+            if r.status_code == 200:
+                return
+        except requests.RequestException:
+            pass
+        time.sleep(0.1)
+    raise RuntimeError("Server did not start in time")
+
+
+def test_integration_end_to_end_load_sample_invalidate():
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
+    try:
+        for i in range(50):
+            tmp.write(f"Line-{i}\n")
+        tmp.close()
+
+        env = os.environ.copy()
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "src.server:app", "--host", "127.0.0.1", "--port", str(port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+
+        try:
+            _wait_until_up(base_url)
+
+            # 1) load
+            r = requests.post(f"{base_url}/load", json={"filepath": tmp.name}, timeout=3)
+            assert r.status_code == 200
+            assert r.json()["lines_read"] == 50
+
+            # 2) sample 10
+            r = requests.post(f"{base_url}/sample", json={"n": 10}, timeout=3)
+            assert r.status_code == 200
+            body1 = r.json()
+            assert body1["count"] == 10
+            assert len(body1["lines"]) == 10
+            assert len(set(body1["lines"])) == 10  # no dupes inside response
+
+            # 3) sample remaining (overshoot on purpose)
+            r = requests.post(f"{base_url}/sample", json={"n": 1000}, timeout=3)
+            assert r.status_code == 200
+            body2 = r.json()
+            assert body2["count"] == 40
+            assert len(body2["lines"]) == 40
+
+            # 4) invalidation check: nothing left now
+            r = requests.post(f"{base_url}/sample", json={"n": 1}, timeout=3)
+            assert r.status_code == 200
+            body3 = r.json()
+            assert body3["count"] == 0
+            assert body3["lines"] == []
+
+            # 5) verify no overlap between first two samples
+            assert set(body1["lines"]).isdisjoint(set(body2["lines"]))
+
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+            # If it failed, these logs help instantly diagnose import/port issues
+            if proc.returncode not in (0, None):
+                out = proc.stdout.read() if proc.stdout else ""
+                err = proc.stderr.read() if proc.stderr else ""
+                # Don’t fail test for logging; but useful when debugging locally
+                _ = (out, err)
+
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+
